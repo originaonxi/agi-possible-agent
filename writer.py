@@ -6,39 +6,36 @@ Format: Story | Logic | Maths | Impact | Why AGI-relevant
 
 from __future__ import annotations
 import json
-import anthropic
 from openai import OpenAI
-from datetime import date
-from config import ANTHROPIC_API_KEY, TOP_N_STORIES, REQUESTY_API_KEY, REQUESTY_BASE_URL, REQUESTY_MODEL
+from config import TOP_N_STORIES, REQUESTY_API_KEY, REQUESTY_BASE_URL, SELECTOR_MODEL, WRITER_MODEL
 
-# Primary: Requesty (routes to Claude Sonnet via OpenAI-compatible API)
-# Fallback: direct Anthropic SDK
-_requesty = OpenAI(api_key=REQUESTY_API_KEY, base_url=REQUESTY_BASE_URL)
-_anthropic = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+_client = OpenAI(api_key=REQUESTY_API_KEY, base_url=REQUESTY_BASE_URL)
 
-def _chat(system: str, user: str, max_tokens: int = 800) -> str:
-    """Call LLM — Requesty first, Anthropic direct as fallback."""
-    # Try Requesty first
+
+def _chat(system: str, user: str, max_tokens: int = 800, model: str = WRITER_MODEL) -> str:
+    """Call LLM via Requesty. Falls back to gpt-4o if primary model fails."""
     try:
-        resp = _requesty.chat.completions.create(
-            model=REQUESTY_MODEL,
+        resp = _client.chat.completions.create(
+            model=model,
             max_tokens=max_tokens,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": user},
+                {"role": "user",   "content": user},
             ],
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        if _anthropic:
-            msg = _anthropic.messages.create(
-                model="claude-sonnet-4-20250514",
+        if model != "openai/gpt-4o":
+            resp = _client.chat.completions.create(
+                model="openai/gpt-4o",
                 max_tokens=max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user},
+                ],
             )
-            return msg.content[0].text.strip()
-        raise RuntimeError(f"Both LLM backends failed: {e}")
+            return resp.choices[0].message.content.strip()
+        raise RuntimeError(f"LLM call failed: {e}")
 
 WRITER_SYSTEM = """You are the writer of "Daily AGI Possible" — the best
 ML newsletter in the world. Your job: explain cutting-edge AI research
@@ -102,6 +99,7 @@ def select_top_stories(candidates: list[dict], n: int = TOP_N_STORIES, qualified
 Pick 1 to {max_pick} that every AGI researcher MUST read today.
 Return ONLY a JSON array: [3, 1, 7]""",
             max_tokens=300,
+            model=SELECTOR_MODEL,
         )
         # Extract JSON array — handle empty or malformed responses
         if not text:

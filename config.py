@@ -11,7 +11,11 @@ REQUESTY_API_KEY = os.environ.get(
     "rqsty-sk-/JTViZRyS62Hdxsq1s2DGukrmTe4GTgjfmoT5ejWJ5ecV8UZuHFr14ZrEbXgCpt61QmZ6B+B/PFM4gx4o48A89xkEXANC+XfEllnEXUy7QA=",
 )
 REQUESTY_BASE_URL = "https://router.requesty.ai/v1"
-REQUESTY_MODEL = "anthropic/claude-sonnet-4-6"
+
+# Benchmark result (2026-05-21): gpt-4o is the best non-Anthropic model via Requesty.
+# o4-mini fails silently (system prompt incompatible). Gemini IDs not supported.
+SELECTOR_MODEL = "openai/gpt-4o"
+WRITER_MODEL   = "openai/gpt-4o"
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
