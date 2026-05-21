@@ -124,6 +124,21 @@ def write_story(item: dict, story_number: int, total_items_today: int) -> dict:
     if not abstract and "arxiv.org" in item.get("url", ""):
         abstract = _fetch_arxiv_abstract(item["url"])
 
+    hf_likes     = item.get("hf_likes", 0) or 0
+    citations    = (item.get("s2", {}) or {}).get("citationCount", 0) or 0
+    cit_velocity = (item.get("s2", {}) or {}).get("citationVelocity", 0) or 0
+    has_code     = item.get("has_official_code") or item.get("pwc", {}).get("has_code")
+    has_weights  = item.get("has_hf_model", False)
+    reddit       = item.get("reddit", {}) or {}
+    reddit_score = reddit.get("score", 0) or 0
+
+    signal_lines = []
+    if hf_likes:     signal_lines.append(f"HuggingFace upvotes: {hf_likes} (community velocity signal)")
+    if cit_velocity: signal_lines.append(f"Citation velocity: +{cit_velocity} citations/month")
+    if reddit_score: signal_lines.append(f"Reddit r/MachineLearning score: {reddit_score}")
+    if has_code:     signal_lines.append("Has official code implementation")
+    if has_weights:  signal_lines.append("Open weights released on HuggingFace")
+
     prompt = f"""Write story #{story_number} for today's "Daily AGI Possible" newsletter.
 
 Paper/Post details:
@@ -132,6 +147,7 @@ Source: {item.get('source', 'Unknown')}
 URL: {item.get('url', '')}
 Abstract/Description: {abstract or 'Not available — use your knowledge of this paper/topic'}
 Authors: {', '.join(item.get('authors', [])) or 'Unknown'}
+{chr(10).join(signal_lines) if signal_lines else ''}
 
 Write the story in this exact structure:
 
