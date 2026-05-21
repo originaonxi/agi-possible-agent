@@ -12,11 +12,10 @@ REQUESTY_API_KEY = os.environ.get(
 )
 REQUESTY_BASE_URL = "https://router.requesty.ai/v1"
 
-# Codex + Gemini CLI both independently recommend Claude Opus 4.7 for writing.
-# GPT-4o writes "newsletter-ese" (filler). Opus 4.7 is technically sharp + concise.
-# gpt-4o for selector: reliable JSON, precise reasoning.
+# Issue #001 was generated with Sonnet 4.6 — user confirmed this is the best writing style.
+# Sharp, technical, no fluff. GPT-4o for selector (reliable JSON).
 SELECTOR_MODEL = "openai/gpt-4o"
-WRITER_MODEL   = "anthropic/claude-opus-4-7"
+WRITER_MODEL   = "anthropic/claude-sonnet-4-6"
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
