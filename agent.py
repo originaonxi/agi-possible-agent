@@ -22,7 +22,7 @@ from storage.database import (
     get_issue_number, log_email, get_total_seen
 )
 from scrapers.arxiv_scraper import scrape_all as scrape_arxiv
-from scrapers.hf_scraper import scrape_hf_papers
+from scrapers.hf_scraper import scrape_hf_papers, check_hf_model_exists
 from scrapers.labs_scraper import scrape_all_labs
 from scrapers.openreview_scraper import scrape_all_conferences
 from scrapers.reddit_scraper import scrape_reddit_papers, build_reddit_index
@@ -107,9 +107,14 @@ def run():
             signals = get_paper_signals(pid)
             p["pwc"] = signals
             p["pwc_score"] = compute_pwc_score(signals)
+            p["has_official_code"] = bool(signals.get("has_official"))
+            # Check HF model hub for open weights (5x citation multiplier signal)
+            p["has_hf_model"] = check_hf_model_exists(pid)
         else:
             p["pwc"] = {}
             p["pwc_score"] = 0
+            p["has_official_code"] = False
+            p["has_hf_model"] = False
 
     # ─── STEP 6: COMPOSITE SCORE + RANK ──────────────────────────
     print("\n  [6/7] Composite scoring (keyword + citations + code + reddit + lab prestige)...")
