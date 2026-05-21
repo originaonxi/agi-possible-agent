@@ -103,6 +103,9 @@ Pick 1 to {max_pick} that every AGI researcher MUST read today.
 Return ONLY a JSON array: [3, 1, 7]""",
             max_tokens=300,
         )
+        # Extract JSON array — handle empty or malformed responses
+        if not text:
+            raise ValueError("Empty response from LLM")
         match = _re.search(r'\[[\d,\s]+\]', text)
         indices = json.loads(match.group() if match else text)
         selected = [candidates[i-1] for i in indices if 0 < i <= len(candidates)]
