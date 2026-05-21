@@ -3,6 +3,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Requesty — unified LLM router (Claude/GPT/Gemini via one key)
+# Primary LLM backend when Anthropic direct credits are low
+REQUESTY_API_KEY = os.environ.get(
+    "REQUESTY_API_KEY",
+    "rqsty-sk-/JTViZRyS62Hdxsq1s2DGukrmTe4GTgjfmoT5ejWJ5ecV8UZuHFr14ZrEbXgCpt61QmZ6B+B/PFM4gx4o48A89xkEXANC+XfEllnEXUy7QA=",
+)
+REQUESTY_BASE_URL = "https://router.requesty.ai/v1"
+REQUESTY_MODEL = "anthropic/claude-sonnet-4-6"
+
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USER = os.environ.get("SMTP_USER", "lifeislovesam@gmail.com")

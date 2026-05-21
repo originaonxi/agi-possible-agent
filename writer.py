@@ -7,10 +7,38 @@ Format: Story | Logic | Maths | Impact | Why AGI-relevant
 from __future__ import annotations
 import json
 import anthropic
+from openai import OpenAI
 from datetime import date
-from config import ANTHROPIC_API_KEY, TOP_N_STORIES
+from config import ANTHROPIC_API_KEY, TOP_N_STORIES, REQUESTY_API_KEY, REQUESTY_BASE_URL, REQUESTY_MODEL
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# Primary: Requesty (routes to Claude Sonnet via OpenAI-compatible API)
+# Fallback: direct Anthropic SDK
+_requesty = OpenAI(api_key=REQUESTY_API_KEY, base_url=REQUESTY_BASE_URL)
+_anthropic = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+def _chat(system: str, user: str, max_tokens: int = 800) -> str:
+    """Call LLM — Requesty first, Anthropic direct as fallback."""
+    # Try Requesty first
+    try:
+        resp = _requesty.chat.completions.create(
+            model=REQUESTY_MODEL,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        if _anthropic:
+            msg = _anthropic.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+            return msg.content[0].text.strip()
+        raise RuntimeError(f"Both LLM backends failed: {e}")
 
 WRITER_SYSTEM = """You are the writer of "Daily AGI Possible" — the best
 ML newsletter in the world. Your job: explain cutting-edge AI research
@@ -29,62 +57,60 @@ Your writing style:
 - Use arrows for flow, not bullet points
 - Max 400 words per story"""
 
-SELECTOR_SYSTEM = """You are the editor of "Daily AGI Possible."
-Your job: pick the 5 most AGI-relevant items from today's list.
+SELECTOR_SYSTEM = """You are the editor of "Daily AGI Possible" — the most signal-dense AI research newsletter.
+Your job: pick 1 to 5 papers every AGI researcher MUST read today.
 
-Criteria (in order of importance):
-1. Direct relevance to AGI: self-improvement, reasoning, scaling, alignment, evaluation
-2. Novelty: genuinely new idea or result, not incremental
-3. Impact: if true, does this change something important?
-4. Diversity: try to cover different aspects (architecture, training, evaluation, application, theory)
-5. Clarity: can this be explained to a smart non-specialist?
+These candidates are pre-scored by: citation velocity, lab prestige, Reddit buzz, GitHub stars, keyword signals.
+Your job is final editorial judgment.
 
-Avoid: pure application papers, narrow domain papers, papers with no AGI angle"""
+Strict priority:
+1. Papers that could change how the world thinks about intelligence or AGI — not incremental
+2. Papers from Anthropic, OpenAI, DeepMind, Meta FAIR, Google, or top universities (Stanford/MIT/Berkeley/CMU)
+3. Papers the research community is visibly excited about (high s2/reddit/pwc scores)
+4. Surprising results or genuinely new approaches
+5. At most 1 paper per area (reasoning, alignment, architecture, evaluation, training)
 
-def select_top_stories(candidates: list[dict], n: int = TOP_N_STORIES) -> list[dict]:
+CRITICAL: If nothing is truly remarkable today, pick 1-2 papers. Do NOT pad to 5 with mediocre work.
+A researcher's time is precious. Quality over quantity."""
+
+def select_top_stories(candidates: list[dict], n: int = TOP_N_STORIES, qualified_count: int = 0) -> list[dict]:
     """
-    Use Claude to select the top N most AGI-relevant stories.
-    Two-stage: sort by score, then Claude picks the best N.
+    Claude picks 1-5 best stories from pre-scored candidates.
+    Dynamic count: don't force 5 if nothing is remarkable.
     """
-    # Stage 1: sort by agi_score, take top 20 candidates
-    sorted_candidates = sorted(candidates, key=lambda x: x.get("agi_score", 0), reverse=True)
-    top_candidates = sorted_candidates[:20]
-
-    if not top_candidates:
+    import re as _re
+    if not candidates:
         return []
 
-    # Stage 2: Claude selects the best N
     candidate_list = "\n".join([
-        f"{i+1}. [{c.get('source_type','?')}] {c.get('title','')} (score:{c.get('agi_score',0)}) — {c.get('url','')}"
-        for i, c in enumerate(top_candidates)
+        f"{i+1}. [score:{c.get('composite_score', c.get('agi_score',0))}] [{c.get('source_type','?')}] {c.get('title','')} — {c.get('source','')}\n"
+        f"   s2={c.get('score_breakdown',{}).get('s2',0)} lab={c.get('score_breakdown',{}).get('lab',0)} "
+        f"reddit={c.get('score_breakdown',{}).get('reddit',0)} pwc={c.get('score_breakdown',{}).get('pwc',0)}\n"
+        f"   {c.get('url','')}"
+        for i, c in enumerate(candidates)
     ])
 
+    max_pick = min(n, len(candidates))
+
     try:
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=500,
-            system=SELECTOR_SYSTEM,
-            messages=[{
-                "role": "user",
-                "content": f"""Today's new ML content ({len(top_candidates)} items):
+        text = _chat(
+            SELECTOR_SYSTEM,
+            f"""Today's pre-scored candidates ({len(candidates)} from {qualified_count} qualified):
 
 {candidate_list}
 
-Select the {n} most AGI-relevant items. Return ONLY a JSON array of the numbers (1-based):
-Example: [3, 7, 12, 1, 9]
-
-Return only the JSON array, nothing else."""
-            }]
+Pick 1 to {max_pick} that every AGI researcher MUST read today.
+Return ONLY a JSON array: [3, 1, 7]""",
+            max_tokens=300,
         )
-
-        text = msg.content[0].text.strip()
-        indices = json.loads(text)
-        selected = [top_candidates[i-1] for i in indices if 0 < i <= len(top_candidates)]
-        return selected[:n]
+        match = _re.search(r'\[[\d,\s]+\]', text)
+        indices = json.loads(match.group() if match else text)
+        selected = [candidates[i-1] for i in indices if 0 < i <= len(candidates)]
+        return selected[:max_pick]
 
     except Exception as e:
-        print(f"  Selector error: {e}, using score-based top {n}")
-        return top_candidates[:n]
+        print(f"  Selector error: {e}, using score-based top 3")
+        return candidates[:min(3, max_pick)]
 
 def write_story(item: dict, story_number: int, total_items_today: int) -> dict:
     """
@@ -122,14 +148,7 @@ Write the story in this exact structure:
 Keep it under 380 words total. Write like you're explaining this to a brilliant friend over coffee."""
 
     try:
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=800,
-            system=WRITER_SYSTEM,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        content = msg.content[0].text.strip()
-
+        content = _chat(WRITER_SYSTEM, prompt, max_tokens=800)
         return {
             "number": story_number,
             "title": item.get("title", ""),
@@ -167,20 +186,18 @@ def write_why_these_five(stories: list[dict], total_scraped: int) -> str:
     """
     titles = [f"{s['number']}. {s['title']}" for s in stories]
 
+    n = len(stories)
     try:
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=300,
-            messages=[{"role": "user", "content": f"""Write a 3-sentence closing for "Daily AGI Possible" newsletter.
+        return _chat(
+            "You are the editor of a top AI research newsletter. Be direct, human, no filler.",
+            f"""Write a 3-sentence closing for "Daily AGI Possible" newsletter.
 
-Today we ingested ~{total_scraped} new items. We chose these 5:
+Today we ingested ~{total_scraped} new items. We chose {n}:
 {chr(10).join(titles)}
 
-Explain WHY these 5 specifically — what made them stand out from the rest.
-Be specific about the signal (not just "they were the best").
-Tone: human, direct, like a sharp editor explaining their choices.
-Return only the 3 sentences, no headers."""}]
+Explain WHY these specifically — what signal made them stand out.
+Tone: sharp editor explaining choices. Return only 3 sentences, no headers.""",
+            max_tokens=300,
         )
-        return msg.content[0].text.strip()
     except Exception:
-        return f"Out of ~{total_scraped} new items today, these 5 had the highest AGI signal-to-noise ratio — direct attacks on self-improvement, architectural scaling, and evaluation gaps that matter."
+        return f"Out of ~{total_scraped} new items today, these {n} had the highest composite signal — citation velocity, lab prestige, community buzz, and direct AGI relevance."

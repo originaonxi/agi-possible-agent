@@ -47,17 +47,62 @@ def markdown_to_html(text: str) -> str:
 
     return '\n'.join(html_parts)
 
+def _signal_badges(item: dict) -> str:
+    """Build social signal badges for a paper (citations, stars, Reddit, lab)."""
+    badges = []
+
+    # S2 citation velocity
+    s2 = item.get("s2") or {}
+    velocity = s2.get("citationVelocity") or 0
+    influential = s2.get("influentialCitationCount") or 0
+    if velocity >= 20:
+        badges.append(f'<span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">\u26a1 {velocity} cit/yr</span>')
+    elif influential >= 5:
+        badges.append(f'<span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">\ud83d\udcda {influential} influential cit</span>')
+
+    # Papers With Code stars
+    pwc = item.get("pwc") or {}
+    stars = pwc.get("stars") or 0
+    if stars >= 100:
+        k = f"{stars//1000}k" if stars >= 1000 else str(stars)
+        badges.append(f'<span style="background:#1c1917;color:#fb923c;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">\u2b50 {k} stars</span>')
+    elif pwc.get("has_official"):
+        badges.append('<span style="background:#1c1917;color:#fb923c;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">\u2705 official code</span>')
+
+    # Reddit buzz
+    reddit = item.get("reddit") or {}
+    reddit_score = reddit.get("reddit_score") or 0
+    if reddit_score >= 100:
+        badges.append(f'<span style="background:#1a0a00;color:#f97316;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">\ud83d\udd25 r/ML {reddit_score}</span>')
+
+    # Conference badge
+    if item.get("source_type") == "conference":
+        venue = item.get("conference_venue", "Conference")
+        badges.append(f'<span style="background:#0c0a1e;color:#a78bfa;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">\ud83c\udf93 {venue}</span>')
+
+    if not badges:
+        return ""
+    return f'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">{" ".join(badges)}</div>'
+
 def build_story_html(story: dict) -> str:
     """Build HTML for one story."""
     content_html = markdown_to_html(story["content"])
     source = story.get("source", "")
     url = story.get("url", "#")
+    item = story.get("item", {})
+    badges_html = _signal_badges(item)
+
+    # Composite score display
+    score = item.get("composite_score", 0)
+    score_color = "#4ade80" if score >= 60 else "#a78bfa" if score >= 40 else "#818cf8"
 
     return f"""
 <div style="background:#0f0f2a;border-radius:12px;padding:24px;margin-bottom:24px;border:1px solid #1e1b4b;">
-  <div style="margin-bottom:12px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
     <span style="background:#1e1b4b;color:#818cf8;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">{source}</span>
+    <span style="color:{score_color};font-size:11px;font-weight:600;">signal: {score}</span>
   </div>
+  {badges_html}
   {content_html}
   <div style="margin-top:16px;padding-top:12px;border-top:1px solid #1e1b4b;">
     <a href="{url}" style="color:#818cf8;font-size:12px;text-decoration:none;">Read full paper \u2192</a>
@@ -112,7 +157,7 @@ def build_email_html(
 <!-- Intro -->
 <div style="background:#0a0a1e;padding:20px 32px;border-bottom:1px solid #1e1b4b;">
   <p style="margin:0 0 8px;color:#94a3b8;font-size:14px;line-height:1.7;">
-    Every day at 8am PST, this agent scrapes the entire ML frontier \u2014 arXiv, HuggingFace, Anthropic, OpenAI, DeepMind, Meta AI, Stanford HAI, MIT CSAIL, Berkeley BAIR \u2014 and sends you only what's new. No duplicates. No noise. Just the 5 stories that actually teach you something about building general intelligence.
+    Every day at 8am PST, this agent scrapes the entire ML frontier \u2014 arXiv (4 categories), HuggingFace Papers, frontier lab blogs (Anthropic/OpenAI/DeepMind/Meta), and ICLR/NeurIPS/ICML via OpenReview. Then it cross-references Semantic Scholar citation velocity, Papers With Code GitHub stars, and Reddit r/MachineLearning buzz to find the papers every researcher is actually talking about. Only the ones that clear the quality bar reach your inbox.
   </p>
   <p style="margin:0;color:#64748b;font-size:12px;">Sources today: {source_tags}</p>
 </div>
