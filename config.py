@@ -12,10 +12,11 @@ REQUESTY_API_KEY = os.environ.get(
 )
 REQUESTY_BASE_URL = "https://router.requesty.ai/v1"
 
-# Benchmark result (2026-05-21): gpt-4o is the best non-Anthropic model via Requesty.
-# o4-mini fails silently (system prompt incompatible). Gemini IDs not supported.
+# Codex + Gemini CLI both independently recommend Claude Opus 4.7 for writing.
+# GPT-4o writes "newsletter-ese" (filler). Opus 4.7 is technically sharp + concise.
+# gpt-4o for selector: reliable JSON, precise reasoning.
 SELECTOR_MODEL = "openai/gpt-4o"
-WRITER_MODEL   = "openai/gpt-4o"
+WRITER_MODEL   = "anthropic/claude-opus-4-7"
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
